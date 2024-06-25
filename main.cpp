@@ -9,18 +9,9 @@ const char *SERVER = "127.0.0.1";
 const unsigned int BUFFER_LENGTH = 516;
 const unsigned int PORT = 69;
 
-enum Opcode : unsigned short {
-    RRQ = 1,
-    WRQ = 2,
-    DATA = 3,
-    ACK = 4,
-    ERROR = 5
-};
+enum Opcode : unsigned short { RRQ = 1, WRQ = 2, DATA = 3, ACK = 4, ERROR = 5 };
 
-enum Mode {
-    NETASCII,
-    OCTET
-};
+enum Mode { NETASCII, OCTET };
 
 typedef struct {
     Opcode opcode;
@@ -34,14 +25,15 @@ void kys(const char *s) {
 }
 
 class TFTP {
-    public:
-        TFTP(const char *server, unsigned short port);
-        ~TFTP();
-        void send(const Request &request);
-        void receive();
-    private:
-        unsigned int sock;
-        struct sockaddr_in server;
+  public:
+    TFTP(const char *server, unsigned short port);
+    ~TFTP();
+    void send(const Request &request);
+    void receive();
+
+  private:
+    unsigned int sock;
+    struct sockaddr_in server;
 };
 
 TFTP::TFTP(const char *host, unsigned short port) {
@@ -61,9 +53,7 @@ TFTP::TFTP(const char *host, unsigned short port) {
     }
 }
 
-TFTP::~TFTP() {
-    close(sock);
-}
+TFTP::~TFTP() { close(sock); }
 
 void TFTP::send(const Request &request) {
     char message[BUFFER_LENGTH];
@@ -88,8 +78,7 @@ void TFTP::send(const Request &request) {
         message, "%c%c%s%c%s%c", (request.opcode >> 8) & 0xFF,
         request.opcode & 0xFF, request.filename, '\0', mode, '\0'
     );
-    unsigned int message_length =
-        strlen(request.filename) + strlen(mode) + 4;
+    unsigned int message_length = strlen(request.filename) + strlen(mode) + 4;
 
     if (sendto(
             sock, message, message_length, 0, (struct sockaddr *)&server,
