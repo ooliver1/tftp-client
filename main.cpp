@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -9,26 +10,81 @@ const char *SERVER = "127.0.0.1";
 const unsigned int BUFFER_LENGTH = 516;
 const unsigned int PORT = 69;
 
-enum Opcode : unsigned short { RRQ = 1, WRQ = 2, DATA = 3, ACK = 4, ERROR = 5 };
+enum class Opcode : unsigned short { RRQ = 1, WRQ = 2, DATA = 3, ACK = 4, ERROR = 5 };
 
 enum Mode { NETASCII, OCTET };
-
-typedef struct {
-    Opcode opcode;
-    const char *filename;
-    Mode mode;
-} Request;
 
 void kys(const char *s) {
     perror(s);
     exit(1);
 }
 
+class Packet {
+  public:
+    virtual std::string serialize() = 0;
+};
+
+class Request : public Packet {
+  protected:
+    Mode mode;
+
+    Request(Mode mode) : mode(mode) {}
+
+    const char *getMode() {
+        if (mode == NETASCII) {
+            return "netascii";
+        } else if (mode == OCTET) {
+            return "octet";
+        } else {
+            fprintf(stderr, "Invalid mode\n");
+            exit(1);
+        }
+    }
+};
+
+class RRQ : public Request {
+  public:
+    RRQ(const char *filename, Mode mode) : filename(filename), Request(mode) {}
+
+    std::string serialize() {
+        const char *modec = getMode();
+        std::string message = "0";
+        message += static_cast<char>(Opcode::RRQ);
+        message += filename;
+        message += '\0';
+        message += modec;
+        message += '\0';
+        return message;
+    }
+
+  private:
+    const char *filename;
+};
+
+class WRQ : public Request {
+  public:
+    WRQ(const char *filename, Mode mode) : filename(filename), Request(mode) {}
+
+    std::string serialize() {
+        const char *modec = getMode();
+        std::string message = "0";
+        message += static_cast<char>(Opcode::WRQ);
+        message += filename;
+        message += '\0';
+        message += modec;
+        message += '\0';
+        return message;
+    }
+
+  private:
+    const char *filename;
+};
+
 class TFTP {
   public:
-    TFTP(const char *server, unsigned short port);
+    TFTP(char *host, unsigned short port);
     ~TFTP();
-    void send(const Request &request);
+    void send(Packet &request);
     void receive();
 
   private:
@@ -36,7 +92,7 @@ class TFTP {
     struct sockaddr_in server;
 };
 
-TFTP::TFTP(const char *host, unsigned short port) {
+TFTP::TFTP(char *host, unsigned short port) {
     if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
         kys("socket");
     }
@@ -55,33 +111,12 @@ TFTP::TFTP(const char *host, unsigned short port) {
 
 TFTP::~TFTP() { close(sock); }
 
-void TFTP::send(const Request &request) {
-    char message[BUFFER_LENGTH];
-
-    if (request.opcode != RRQ && request.opcode != WRQ) {
-        fprintf(stderr, "Invalid opcode\n");
-        exit(1);
-    }
-
-    const char *mode;
-    if (request.mode == NETASCII) {
-        mode = "netascii";
-    } else if (request.mode == OCTET) {
-        mode = "octet";
-    } else {
-        fprintf(stderr, "Invalid mode\n");
-        exit(1);
-    }
-
-    // Construct message.
-    sprintf(
-        message, "%c%c%s%c%s%c", (request.opcode >> 8) & 0xFF,
-        request.opcode & 0xFF, request.filename, '\0', mode, '\0'
-    );
-    unsigned int message_length = strlen(request.filename) + strlen(mode) + 4;
+void TFTP::send(Packet &request) {
+    std::string message = request.serialize();
+    unsigned int message_length = message.length();
 
     if (sendto(
-            sock, message, message_length, 0, (struct sockaddr *)&server,
+            sock, message.c_str(), message_length, 0, (struct sockaddr *)&server,
             sizeof(server)
         ) == -1) {
         kys("sendto()");
@@ -103,8 +138,8 @@ void TFTP::receive() {
 }
 
 int main() {
-    TFTP tftp(SERVER, PORT);
-    Request request = {Opcode::RRQ, "/home/oliver/h.sh", Mode::NETASCII};
+    TFTP tftp((char *)SERVER, PORT);
+    RRQ request("/home/oliver/h.sh", NETASCII);
 
     tftp.send(request);
     tftp.receive();
