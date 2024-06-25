@@ -9,10 +9,23 @@ const char *SERVER = "127.0.0.1";
 const unsigned int BUFFER_LENGTH = 516;
 const unsigned int PORT = 69;
 
+enum Opcode : unsigned short {
+    RRQ = 1,
+    WRQ = 2,
+    DATA = 3,
+    ACK = 4,
+    ERROR = 5
+};
+
+enum Mode {
+    NETASCII,
+    OCTET
+};
+
 typedef struct {
-    unsigned short opcode;
+    Opcode opcode;
     const char *filename;
-    const char *mode;
+    Mode mode;
 } Request;
 
 void kys(const char *s) {
@@ -55,13 +68,28 @@ TFTP::~TFTP() {
 void TFTP::send(const Request &request) {
     char message[BUFFER_LENGTH];
 
+    if (request.opcode != RRQ && request.opcode != WRQ) {
+        fprintf(stderr, "Invalid opcode\n");
+        exit(1);
+    }
+
+    const char *mode;
+    if (request.mode == NETASCII) {
+        mode = "netascii";
+    } else if (request.mode == OCTET) {
+        mode = "octet";
+    } else {
+        fprintf(stderr, "Invalid mode\n");
+        exit(1);
+    }
+
     // Construct message.
     sprintf(
         message, "%c%c%s%c%s%c", (request.opcode >> 8) & 0xFF,
-        request.opcode & 0xFF, request.filename, '\0', request.mode, '\0'
+        request.opcode & 0xFF, request.filename, '\0', mode, '\0'
     );
     unsigned int message_length =
-        strlen(request.filename) + strlen(request.mode) + 4;
+        strlen(request.filename) + strlen(mode) + 4;
 
     if (sendto(
             sock, message, message_length, 0, (struct sockaddr *)&server,
@@ -87,7 +115,7 @@ void TFTP::receive() {
 
 int main() {
     TFTP tftp(SERVER, PORT);
-    Request request = {1, "/home/oliver/h.sh", "netascii"};
+    Request request = {Opcode::RRQ, "/home/oliver/h.sh", Mode::NETASCII};
 
     tftp.send(request);
     tftp.receive();
