@@ -48,7 +48,7 @@ class RRQ : public Request {
 
     std::string serialize() {
         const char *modec = getMode();
-        std::string message = "0";
+        std::string message = {0x00};
         message += static_cast<char>(Opcode::RRQ);
         message += filename;
         message += '\0';
@@ -67,7 +67,7 @@ class WRQ : public Request {
 
     std::string serialize() {
         const char *modec = getMode();
-        std::string message = "0";
+        std::string message = {0x00};
         message += static_cast<char>(Opcode::WRQ);
         message += filename;
         message += '\0';
