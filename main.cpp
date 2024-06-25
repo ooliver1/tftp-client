@@ -6,8 +6,14 @@
 #include <unistd.h>
 
 const char *SERVER = "127.0.0.1";
-const unsigned int BUFFER_LENGTH = 512;
-const unsigned int PORT = 8888;
+const unsigned int BUFFER_LENGTH = 516;
+const unsigned int PORT = 69;
+
+typedef struct {
+    unsigned short opcode;
+    const char *filename;
+    const char *mode;
+} Request;
 
 void kys(char const *s) {
     perror(s);
@@ -20,6 +26,16 @@ int main(void) {
     socklen_t slen = sizeof(server);
     char buf[BUFFER_LENGTH];
     char message[BUFFER_LENGTH];
+
+    Request request = {1, "/home/oliver/h.sh", "netascii"};
+
+    // Construct message.
+    sprintf(
+        message, "%c%c%s%c%s%c", (request.opcode >> 8) & 0xFF,
+        request.opcode & 0xFF, request.filename, '\0', request.mode, '\0'
+    );
+    unsigned int message_length =
+        strlen(request.filename) + strlen(request.mode) + 4;
 
     if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
         kys("socket");
@@ -36,26 +52,20 @@ int main(void) {
         exit(1);
     }
 
-    while (1) {
-        printf("Enter message : ");
-        fgets(message, BUFFER_LENGTH, stdin);
-
-        if (sendto(
-                sock, message, strlen(message), 0, (struct sockaddr *)&server,
-                slen
-            ) == -1) {
-            kys("sendto()");
-        }
-
-        memset(buf, '\0', BUFFER_LENGTH);
-        if (recvfrom(
-                sock, buf, BUFFER_LENGTH, 0, (struct sockaddr *)&server, &slen
-            ) == -1) {
-            kys("recvfrom()");
-        }
-
-        puts(buf);
+    if (sendto(
+            sock, message, message_length, 0, (struct sockaddr *)&server, slen
+        ) == -1) {
+        kys("sendto()");
     }
+
+    memset(buf, '\0', BUFFER_LENGTH);
+    if (recvfrom(
+            sock, buf, BUFFER_LENGTH, 0, (struct sockaddr *)&server, &slen
+        ) == -1) {
+        kys("recvfrom()");
+    }
+
+    puts(buf);
 
     close(sock);
     return 0;
