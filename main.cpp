@@ -10,7 +10,13 @@ const char *SERVER = "127.0.0.1";
 const unsigned int BUFFER_LENGTH = 516;
 const unsigned int PORT = 69;
 
-enum class Opcode : unsigned short { RRQ = 1, WRQ = 2, DATA = 3, ACK = 4, ERROR = 5 };
+enum class Opcode : unsigned short {
+    RRQ = 1,
+    WRQ = 2,
+    DATA = 3,
+    ACK = 4,
+    ERROR = 5
+};
 
 enum Mode { NETASCII, OCTET };
 
@@ -22,6 +28,53 @@ void kys(const char *s) {
 class Packet {
   public:
     virtual std::string serialize() = 0;
+};
+
+class Data : public Packet {
+  public:
+    Data(unsigned short block_number, char *data)
+        : block_number(block_number), data(data) {}
+    Data(char *raw) {
+        block_number = raw[1];
+        data = raw + 4;
+    }
+
+    std::string serialize() {
+        std::string message = {0x00};
+        message += static_cast<char>(Opcode::DATA);
+        message += static_cast<char>(block_number);
+        message += data;
+        return message;
+    }
+
+    unsigned short getBlockNumber() { return block_number; }
+    char *getData() {
+        char *data_copy = new char[strlen(data) + 1];
+        snprintf(data_copy, strlen(data) + 1, "%s", data);
+        return data_copy;
+    }
+
+  private:
+    unsigned short block_number;
+    char *data;
+};
+
+class Ack : public Packet {
+  public:
+    Ack(unsigned short block_number) : block_number(block_number) {}
+    Ack(char *raw) { block_number = raw[1]; }
+
+    std::string serialize() {
+        std::string message = {0x00};
+        message += static_cast<char>(Opcode::ACK);
+        message += static_cast<char>(block_number);
+        return message;
+    }
+
+    unsigned short getBlockNumber() { return block_number; }
+
+  private:
+    unsigned short block_number;
 };
 
 class Request : public Packet {
@@ -84,12 +137,13 @@ class TFTP {
   public:
     TFTP(char *host, unsigned short port);
     ~TFTP();
-    void send(Packet &request);
-    void receive();
+    void read(char *filename, Mode mode);
 
   private:
     unsigned int sock;
     struct sockaddr_in server;
+    void send(Packet &request);
+    char *receive();
 };
 
 TFTP::TFTP(char *host, unsigned short port) {
@@ -116,14 +170,14 @@ void TFTP::send(Packet &request) {
     unsigned int message_length = message.length();
 
     if (sendto(
-            sock, message.c_str(), message_length, 0, (struct sockaddr *)&server,
-            sizeof(server)
+            sock, message.c_str(), message_length, 0,
+            (struct sockaddr *)&server, sizeof(server)
         ) == -1) {
         kys("sendto()");
     }
 }
 
-void TFTP::receive() {
+char *TFTP::receive() {
     char buf[BUFFER_LENGTH];
     socklen_t slen = sizeof(server);
 
@@ -134,15 +188,36 @@ void TFTP::receive() {
         kys("recvfrom()");
     }
 
-    puts(buf);
+    int opcode = buf[1];
+    if (opcode == static_cast<int>(Opcode::DATA)) {
+        Data data(buf);
+        Ack ack(data.getBlockNumber());
+        send(ack);
+        return data.getData();
+    } else if (opcode == static_cast<int>(Opcode::ACK)) {
+        Ack ack(buf);
+    } else if (opcode == static_cast<int>(Opcode::ERROR)) {
+        fprintf(stderr, "Error: %s\n", buf + 4);
+        exit(1);
+    } else {
+        fprintf(stderr, "Invalid opcode\n");
+        exit(1);
+    }
+
+    return nullptr;
+}
+
+void TFTP::read(char *filename, Mode mode) {
+    RRQ request(filename, mode);
+    send(request);
+    char *data = receive();
+    printf("%s\n", data);
+    delete[] data;
 }
 
 int main() {
     TFTP tftp((char *)SERVER, PORT);
-    RRQ request("/home/oliver/h.sh", NETASCII);
-
-    tftp.send(request);
-    tftp.receive();
+    tftp.read((char *)"/home/oliver/Documents/pwogwamming/cpp/tftp/.vscode/settings.json", Mode::NETASCII);
 
     return 0;
 }
